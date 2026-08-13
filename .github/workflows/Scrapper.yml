@@ -2,9 +2,11 @@ name: Scrape Pamphlets
 
 on:
   schedule:
-    # প্রতিদিন অটোমেটিক রান করার জন্য (প্রয়োজনে সময় পরিবর্তন করতে পারেন)
-    - cron: '0 0 * * *'
-  workflow_dispatch: # ম্যানুয়ালি রান করার জন্য
+    - cron: '0 0 * * *' # প্রতিদিন স্বয়ংক্রিয়ভাবে চলার জন্য
+  workflow_dispatch: # গিটহাব থেকে ম্যানুয়ালি রান করার জন্য
+
+permissions:
+  contents: write # গিটহাবে ফাইল push করার অনুমতি নিশ্চিত করতে
 
 jobs:
   scrape:
