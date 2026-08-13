@@ -5,8 +5,8 @@ from bs4 import BeautifulSoup
 import html
 import re
 
-START_ID = 1000
-END_ID = 10000
+INPUT_FILE = "pamphlet.txt"
+OUTPUT_FOLDER = "pamphletTXT"
 
 BASE_URL = "https://www.dawateislami.net/pamphlets/{}/page/{}"
 
@@ -32,15 +32,37 @@ def final_clean(text):
 def run_git_command(cmd):
     return os.system(cmd)
 
+def load_ids_from_txt(filepath):
+    if not os.path.exists(filepath):
+        print(f"ERROR: {filepath} not found!")
+        return []
+    with open(filepath, 'r', encoding='utf-8') as f:
+        content = f.read()
+    ids = re.split(r'[,\n|\s]+', content)
+    clean_ids = []
+    for i in ids:
+        i = i.strip()
+        if i.isdigit():
+            clean_ids.append(int(i))
+    clean_ids = list(dict.fromkeys(clean_ids))
+    print(f"Loaded {len(clean_ids)} IDs from {filepath}: {clean_ids}")
+    return clean_ids
+
 # GitHub Actions-এ Git User Config সেট করা
 run_git_command('git config --global user.name "github-actions[bot]"')
 run_git_command('git config --global user.email "github-actions[bot]@users.noreply.github.com"')
 
-for p_id in range(START_ID, END_ID + 1):
+# pamphletTXT ফোল্ডার তৈরি করা
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+PAMPHLET_IDS = load_ids_from_txt(INPUT_FILE)
+
+for p_id in PAMPHLET_IDS:
     page = 1
     pamphlet_text = ""
     has_data = False
     book_title = ""
+    print(f"\n========== Starting New Session for Pamphlet {p_id} ==========")
 
     while True:
         url = BASE_URL.format(p_id, page)
@@ -48,26 +70,25 @@ for p_id in range(START_ID, END_ID + 1):
 
         try:
             res = requests.get(url, headers=headers, timeout=15)
-            if res.status_code != 200:
+            if res.status_code!= 200:
                 print(f"Page {page} returned status {res.status_code}. Stopping pamphlet {p_id}.")
                 break
 
             soup = BeautifulSoup(res.text, "html.parser")
 
-            # প্রথম পেজে কিতাবের নাম খুঁজে বের করা (ফোল্ডারের নামের জন্য)
+            # প্রথম পেজে কিতাবের নাম খুঁজে বের করা (ফাইলের নামের জন্য)
             if page == 1:
                 title_tag = soup.find("h1") or soup.find("h2") or soup.find("title")
                 if title_tag:
                     book_title = title_tag.get_text(strip=True)
-                
+
                 if not book_title:
                     book_title = f"pamphlet_{p_id}"
                 else:
                     book_title = f"{clean_folder_name(book_title)}_{p_id}"
 
-                # ফোল্ডার তৈরি ও চেক করা যে এটি আগে স্ক্র্যাপ করা হয়েছে কিনা
-                folder_path = os.path.join(os.getcwd(), book_title)
-                file_path = os.path.join(folder_path, f"{book_title}.txt")
+                # চেক করা যে এটি আগে pamphletTXT ফোল্ডারে স্ক্র্যাপ করা হয়েছে কিনা
+                file_path = os.path.join(OUTPUT_FOLDER, f"{book_title}.txt")
 
                 if os.path.exists(file_path):
                     print(f"Skipping Pamphlet {p_id}, already exists at {file_path}")
@@ -101,23 +122,25 @@ for p_id in range(START_ID, END_ID + 1):
             print(f"Error on Pamphlet {p_id}, Page {page}: {e}")
             break
 
-    # প্রতিটি কিতাবের পুরো লেখা পাওয়া গেলে আলাদা ফোল্ডারে সেভ ও পুশ করা
+    # প্রতিটি কিতাব আলাদা সেশনে pamphletTXT ফোল্ডারে সেভ ও পুশ করা
     if has_data and pamphlet_text.strip():
         try:
-            folder_path = os.path.join(os.getcwd(), book_title)
-            os.makedirs(folder_path, exist_ok=True)
-            file_path = os.path.join(folder_path, f"{book_title}.txt")
+            file_path = os.path.join(OUTPUT_FOLDER, f"{book_title}.txt")
 
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(pamphlet_text)
             print(f"Saved: {file_path}")
 
-            # গিটহাব রিপোজিটরিতে ফোল্ডারসহ Commit এবং Push করা
-            run_git_command(f'git add "{folder_path}"')
+            # প্রতিটা কিতাব আলাদা আলাদা সেশনে Commit এবং Push
+            run_git_command(f'git add "{file_path}"')
+            run_git_command(f'git add "{OUTPUT_FOLDER}"')
             run_git_command(f'git commit -m "Add pamphlet {p_id}: {book_title}"')
             run_git_command('git push')
-            
-            print(f"Pushed Pamphlet {p_id} to GitHub successfully.\n")
+
+            print(f"Pushed Pamphlet {p_id} to GitHub successfully in separate session.\n")
+            print(f"========== Session Ended for Pamphlet {p_id} ==========\n")
 
         except Exception as e:
             print(f"Save/Push error for Pamphlet {p_id}: {e}\n")
+    else:
+        print(f"No data to save for Pamphlet {p_id}\n")
